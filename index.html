@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ridhi Coin Faucet</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#38d3f1;--muted:#9aa7b2;--glass: rgba(255,255,255,0.03)}
+    *{box-sizing:border-box;font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+    html,body{height:100%;margin:0;background: linear-gradient(180deg,#071224 0%, #0b1b2a 100%); color:#e6f0f6;}
+    .app{max-width:420px;margin:30px auto;padding:18px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:16px;padding:18px;box-shadow:0 8px 30px rgba(2,6,23,0.6);backdrop-filter:blur(6px)}
+    header{display:flex;align-items:center;gap:12px}
+    .logo{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;animation: spin 15s linear infinite}
+    .logo img{width:100%;height:100%;border-radius:12px;object-fit:cover}
+    .title{font-size:18px;font-weight:700}
+    .subtitle{font-size:12px;color:var(--muted);margin-top:2px}
+    .balance{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+    .bal-left{font-size:13px;color:var(--muted)}
+    .bal-amount{font-weight:700}
+    .coin-wrapper{display:flex;justify-content:center;margin-top:18px;position:relative;}
+    .coin{width:160px;height:160px;border-radius:50%;position:relative;transform-style:preserve-3d;transition:transform 0.2s ease;}
+    .coin img{
+      width:90%;
+      height:90%;
+      border-radius:50%;
+      object-fit:cover;
+      animation: heartbeat 1.3s infinite;
+      cursor: pointer;
+    }
+    .spark{
+      position:absolute;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background: white;
+      opacity: 0;
+      pointer-events:none;
+      box-shadow: 0 0 5px white;
+      animation: sparkAnim 0.5s forwards;
+    }
+    @keyframes sparkAnim{
+      0% { transform: scale(0.5); opacity:1; }
+      100% { transform: scale(2); opacity:0; }
+    }
+    .result{margin-top:12px;text-align:center}
+    .footer{margin-top:18px;display:flex;justify-content:space-between;align-items:center}
+    .connect{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#02f823); color:#000505;font-weight:700}
+    .btn{padding:12px;border-radius:12px;border:0;background:#1352ff;color:#000505;font-weight:800;flex:1;margin-left:8px}
+    @media (max-width:380px){.coin{width:132px;height:132px}}
+    .muted{color:var(--muted);font-size:12px}
+    @keyframes spin {0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+    @keyframes heartbeat {
+      0%   { transform: scale(1);   filter: drop-shadow(0 0 11px rgb(240, 4, 4)); }
+      25%  { transform: scale(1.12); filter: drop-shadow(0 0 18px rgb(78, 240, 2)); }
+      50%  { transform: scale(1);   filter: drop-shadow(0 0 11px rgb(240, 236, 11)); }
+      75%  { transform: scale(1.12); filter: drop-shadow(0 0 12px rgb(4, 222, 238)); }
+      100% { transform: scale(1);   filter: drop-shadow(0 0 11px rgb(248, 4, 228)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <header>
+        <div class="logo" id="logoButton">
+          <img src="asiax.png" alt="Coin Logo">
+        </div>
+        <div>
+          <div class="title">𝐅𝐑𝐄𝐄 𝐑𝐈𝐃𝐇𝐈 𝐂𝐎𝐈𝐍𝐒</div>
+          <div class="subtitle">"Daily Free Rewards"</div>
+        </div>
+      </header>
+
+      <div class="balance">
+        <div>
+          <div class="bal-left">Your Balance</div>
+<div class="bal-amount" id="balance">0 RI</div>
+        </div>
+        <div class="muted">Wallet: <span id="walletAddress">0x...</span></div>
+      </div>
+      <div class="coin-wrapper">
+        <div id="coin" class="coin">
+          <img src="ridhi.png" alt="Ridhi Coin">
+        </div>
+      </div>
+      <div class="result">
+        <div id="status" class="info"></div>
+      </div>
+
+      <div class="footer">
+        <button id="connectBtn" class="connect">CONNECT WALLET</button>
+        <button id="claimBtn" class="btn" disabled>CLAIM ONE RIDHI</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const faucetAddress = "0x0d59E433E65a845cceE087679d485FC85962809b"; 
+    const faucetABI = [
+      "function claim() external",
+      "function canClaim(address) view returns (bool,uint256,uint256)",
+      "function totalClaimed(address) view returns (uint256)"
+    ];
+
+    let provider, signer, faucet, userAddress;
+
+    async function connectWallet() {
+      try {
+        if (window.ethereum) {
+          // MetaMask / injected wallet
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          await provider.send("eth_requestAccounts", []);
+          signer = provider.getSigner();
+          userAddress = await signer.getAddress();
+        } else {
+          // WalletConnect fallback
+          const WalletConnectProvider = window.WalletConnectProvider.default;
+          provider = new WalletConnectProvider({
+            rpc: { 1: "https://mainnet.infura.io/v3/YOUR_INFURA_ID" },
+            qrcode: true
+          });
+
+          await provider.enable();
+          const web3Provider = new ethers.providers.Web3Provider(provider);
+          signer = web3Provider.getSigner();
+          userAddress = await signer.getAddress();
+
+          provider.on("disconnect", (code, reason) => {
+            console.log("Wallet disconnected", code, reason);
+            document.getElementById("walletAddress").innerText = "0x...";
+            document.getElementById("claimBtn").disabled = true;
+          });
+        }
+
+        const shortAddr = userAddress.slice(0,6) + "..." + userAddress.slice(-4);
+        document.getElementById("walletAddress").innerText = shortAddr;
+
+        faucet = new ethers.Contract(faucetAddress, faucetABI, signer);
+        checkStatus();
+        updateBalance();
+      } catch(err) {
+        console.error("Wallet connect failed:", err);
+        alert("❌ Wallet connect failed: " + err.message);
+      }
+    }
+
+    async function checkStatus() {
+      try {
+        const [canClaim, waitTime, remaining] = await faucet.canClaim(userAddress);
+        let msg = "";
+        if (canClaim) {
+          msg = "✅ You can claim now.";
+          document.getElementById("claimBtn").disabled = false;
+        } else {
+          msg = "⏳ Next claim available in " + waitTime + " sec.";
+          document.getElementById("claimBtn").disabled = true;
+        }
+        msg += "\nRemaining claimable: " + (ethers.utils.formatUnits(remaining, 18)) + " RIDHI";
+        document.getElementById("status").innerText = msg;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function updateBalance() {
+      try {
+        const claimed = await faucet.totalClaimed(userAddress);
+        document.getElementById("balance").innerText = ethers.utils.formatUnits(claimed, 18) + " RI";
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+   async function claimTokens() {
+      try {
+        const tx = await faucet.claim();
+        document.getElementById("claimBtn").disabled = true;
+        document.getElementById("status").innerText = "⏳ Claiming in progress...";
+        await tx.wait();
+        alert("🎉 Claim successful!");
+        checkStatus();
+        updateBalance();
+      } catch (err) {
+        console.error(err);
+        alert("❌ Claim failed: " + (err.data?.message || err.message));
+      }
+    }
+
+    // Coin click sparkle animation
+    const coinImg = document.querySelector('.coin img');
+    coinImg.addEventListener('click', function(e){
+      const spark = document.createElement('div');
+      spark.className = 'spark';
+      const rect = e.target.getBoundingClientRect();
+      spark.style.left = (e.clientX - rect.left - 5) + 'px';
+      spark.style.top  = (e.clientY - rect.top - 5) + 'px';
+      e.target.parentElement.appendChild(spark);
+      setTimeout(()=>{spark.remove()}, 500);
+    });
+    // --- AsiaX logo button click ---
+const logoButton = document.getElementById("logoButton");
+logoButton.addEventListener("click", function() {
+    window.open("index.html", "_self"); // Home page me redirect
+});
+
+    document.getElementById("connectBtn").onclick = connectWallet;
+    document.getElementById("claimBtn").onclick = claimTokens;
+  </script>
+</body>
+</html>
